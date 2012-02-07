@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Ensure we are immune to scripts, users et.al. clobbering PATH, RBENV_ROOT, etc.
+source /etc/profile.d/rbenv.sh
+
+if [ $# -eq 0 ] ; then
+    echo 'Pass in a ruby version.  Example: 1.9.2-p290'
+    exit 0
+fi
+
+RUBY_BUILD_VER="$1"
+
+read RUBY_VER RUBY_PATCH_VER <<<$(IFS="-"; echo $RUBY_BUILD_VER)
+
+RUBY_NUM=`echo -n ${RUBY_VER}|sed -e 's/\.//g'`
+RUBY_PRIORITY=$((RUBY_NUM + 100))
+
+update_bin_str(){
+if [ -x "$RBENV_ROOT/versions/${RUBY_BUILD_VER}/bin/$1" ]
+then
+   echo "--slave /usr/bin/$1 $1 $RBENV_ROOT/versions/${RUBY_BUILD_VER}/bin/$1"
+else
+   echo ""
+fi
+}
+
+update_man_str(){
+if [ -f "$RBENV_ROOT/versions/${RUBY_BUILD_VER}/share/man/man1/$1" ]
+then
+   echo "--slave /usr/share/man/man1/$1 $1 $RBENV_ROOT/versions/${RUBY_BUILD_VER}/share/man/man1/$1"
+else
+   echo ""
+fi
+}
+
+ua_ruby="--install ${RUBY_ROOT} ruby $RBENV_ROOT/versions/${RUBY_BUILD_VER}/bin/ruby ${RUBY_PRIORITY}"
+ua_ri="$(update_bin_str 'ri')"
+ua_erb="$(update_bin_str 'erb')"
+ua_rake="$(update_bin_str 'rake')"
+ua_rdoc="$(update_bin_str 'rdoc')"
+ua_gem="$(update_bin_str 'gem')"
+ua_testrb="$(update_bin_str 'testrb')"
+ua_irb="$(update_bin_str 'irb')"
+ua_ruby1="$(update_man_str 'ruby.1')"
+ua_rake1="$(update_man_str 'rake.1')"
+ua_ri1="$(update_man_str 'ri.1')"
+ua_irb1="$(update_man_str 'irb.1')"
+ua_erb1="$(update_man_str 'erb.1')"
+
+update-alternatives $ua_ruby $ua_irb $ua_testrb $ua_gem $ua_rdoc $ua_rake $ua_erb $ua_ri $ua_erb1 $ua_irb1 $ua_ri1 $ua_rake1 $ua_ruby1

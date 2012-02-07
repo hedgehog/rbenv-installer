@@ -1,0 +1,196 @@
+#!/usr/bin/env bash
+#
+# This script is linked as rbenv-system-update
+#
+
+[ -n "$RBENV_DEBUG" ] && set -x
+
+# Verify the rbenv log folder exists
+LOG_DIR_PATH=`readlink -f "/var/log/rbenv"`
+if test -d "${LOG_DIR_PATH}" ; then
+  echo 'Start logging...'
+  exec > >(tee /var/log/rbenv/system.log|logger -t rbenv-system -s 2>/dev/console) 2>&1
+else
+  mkdir -p /var/log/rbenv
+fi
+
+if test -f /etc/profile.d/rbenv.sh ; then
+  # Ensure we are immune to users clobbering PATH, RBENV_ROOT, etc.
+  # note dash does not support `source file`, but does recognize `. file`
+  . /etc/profile.d/rbenv.sh
+fi
+
+# Verify Git is installed, otherwise suggest running bootstrap:
+if [ ! $(which git) ]; then
+  echo "Git is not installed."
+  exit
+fi
+
+## Setup system wide:
+#
+# - Environemnt variables
+# - shell profile suited to dash and bash rc/profile includes
+# - bash.bashrc
+# - profile
+# - rsyslog
+#
+export RBENV_ROOT=/usr/local/rbenv
+if grep -Fq "RBENV_ROOT" /etc/environment
+then
+    echo "System wide environment variables already set."
+else
+cat << EOF >> /etc/environment
+RBENV_ROOT=/usr/local/rbenv
+PATH="$RBENV_ROOT/shims:$RBENV_ROOT/bin:$RBENV_ROOT/libexec:$PATH"
+EOF
+cat << EOF > /etc/profile.d/rbenv.sh
+#!/usr/bin/env bash
+# rbenv system-install setup
+[ -n "$RBENV_DEBUG" ] && set -x
+. /etc/environment
+# prefer a user rbenv over a system wide install
+if [[ -s "${HOME}/.rbenv/bin" ]]; then
+  export RBENV_ROOT="${HOME}/.rbenv"
+else
+  export RBENV_ROOT=/usr/local/rbenv
+fi
+export PATH="$RBENV_ROOT/shims:$RBENV_ROOT/bin:$RBENV_ROOT/libexec:$PATH"
+
+# As advised:
+#   https://github.com/sstephenson/rbenv/issues/101#issuecomment-3837903
+# There is NO eval "\$(rbenv init -)"
+# eval "$(rbenv init -)"
+EOF
+  chmod +x /etc/profile.d/rbenv.sh
+  echo -e ". /etc/profile.d/rbenv.sh\n$(cat /etc/bash.bashrc)" >/etc/bash.bashrc
+  echo -e ". /etc/profile.d/rbenv.sh\n$(cat /etc/profile)" >/etc/profile
+cat << EOF > /etc/logrotate.d/rbenv
+/var/log/rbenv/*.log
+{
+    rotate 4
+    weekly
+    missingok
+    notifempty
+    compress
+    delaycompress
+    sharedscripts
+    postrotate
+        reload rsyslog >/dev/null 2>&1 || true
+    endscript
+}
+EOF
+cat << 'EOF' > /etc/rsyslog.d/rbenv.conf
+$ModLoad imudp
+$ModLoad imuxsock
+$UDPServerRun 514
+$UDPServerAddress 127.0.0.1
+$SystemLogUsePIDFromSystem on
+
+$template DynamicFile,"/var/log/rbenv/%timegenerated%-system.log"
+$template verbose,"%syslogseverity%,%syslogfacility%,%timegenerated%,%HOSTNAME%,%syslogtag%,%msg%\n"
+
+rbenv-system.* -?DynamicFile;verbose
+
+rbenv-system.* -/var/log/rbenv/system.log;verbose
+rbenv-user.* -/var/log/rbenv/user.log
+& ~
+# http://serverfault.com/questions/214312/how-to-keep-haproxy-log-messages-out-of-var-log-syslog
+EOF
+  restart rsyslog
+  exec > >(tee /var/log/rbenv/system.log|logger -t rbenv-system -s 2>/dev/console) 2>&1
+fi
+
+# Install rbenv:
+if [ ! -d "$RBENV_ROOT" ] ; then
+  # Keep it lean - grab only EVER the branch we need.
+  BRANCH=master
+  mkdir -p $RBENV_ROOT
+  pushd $RBENV_ROOT
+    git init
+    git remote add -t $BRANCH -f origin git://github.com/sstephenson/rbenv.git
+    git checkout $BRANCH
+  popd
+else
+  pushd $RBENV_ROOT; git pull; popd
+fi
+
+. /etc/profile.d/rbenv.sh
+
+# Install plugins:
+PLUGINS=( "sstephenson:rbenv-vars"
+          "sstephenson:ruby-build"
+          "fesplugas:rbenv-installer"
+          "carsomyr:rbenv-bundler" )
+
+for plugin in ${PLUGINS[@]} ; do
+
+  KEY=${plugin%%:*}
+  VALUE=${plugin#*:}
+
+  RBENV_PLUGIN_ROOT="${RBENV_ROOT}/plugins/$VALUE"
+  if [ ! -d "$RBENV_PLUGIN_ROOT" ] ; then
+    # Keep it lean - grab only EVER the branch we need.
+    BRANCH=master
+    mkdir -p $RBENV_PLUGIN_ROOT
+    pushd $RBENV_PLUGIN_ROOT
+      git init
+      git remote add -t $BRANCH -f origin git://github.com/$KEY/$VALUE.git
+      git checkout $BRANCH
+      if [ -f ./install.sh ]; then
+        chmod +x ./install.sh
+        ./install.sh
+      fi
+    popd
+  else
+    pushd $RBENV_PLUGIN_ROOT
+      git pull
+      if [ -f ./install.sh ]; then
+        chmod +x ./install.sh
+        ./install.sh
+      fi
+    popd
+  fi
+
+done
+
+# Show help if `/usr/local/rbenv` is not in the path:
+if [ ! $(which rbenv) ]; then
+  echo "
+  You should never see this. Please file a bug report describing what you did.
+  In the mean time, it seems 'rbenv' has not been added to the load path.
+  Until we fix this issue, running the following _might_ get you on your way:
+
+    if [[ -d \$RBENV_ROOT ]]; then
+      export PATH=\"\$RBENV_ROOT/bin:\$PATH\"
+      eval \"\$(rbenv init -)\"
+    fi
+  "
+fi
+
+if [ ! -d "/etc/skel/.bundle" ] ; then
+# Production installing gems skipping ri and rdoc
+cat << EOF > /etc/gemrc
+---
+:sources:
+- http://gems.rubyforge.org
+- http://gems.github.com
+install: --no-rdoc --no-ri
+update: --no-ri --no-rdoc
+EOF
+cp /etc/gemrc /etc/skel/.gemrc
+
+echo "#Place your default rbenv ruby version in this file, e.g: 1.9.2-p290" >/etc/skel/.rbenv-version
+
+# Best practice Bundler + rbenv configuration:
+# Among others see...
+# http://ryan.mcgeary.org/2011/02/09/vendor-everything-still-applies/
+mkdir -p /etc/skel/.bundle
+cat << EOF > /etc/skel/.bundle/config
+BUNDLE_BIN: bin
+BUNDLE_SHEBANG: ruby-local-exec
+BUNDLE_DISABLE_SHARED_GEMS: '1'
+BUNDLE_PATH: vendor
+EOF
+fi
+
+rbenv rehash

@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# NOTE
+# For a CentOs version see: https://gist.github.com/1699769
+
+# Update
+apt-get update
+
+# Install development tools:
+apt-get -y install build-essential
+apt-get -y install git-core
+apt-get -y install curl
+apt-get -y install zlib1g zlib1g-dev
+
+# Extras for RubyGems and Rails:
+apt-get -y install zlib1g zlib1g-dev libssl-dev
+
+# Extras for Passenger:
+apt-get -y install libcurl4-openssl-dev
+
+# Extras for ruby gem nokogiri:
+apt-get -y install libxslt-dev libxml2-dev
+
+# Extras for Readline Dev on Ubuntu 10.04 LTS:
+apt-get -y install libreadline5 libreadline5-dev
+
+aptitude -y safe-upgrade
+apt-get autoremove
+
+# References:
+# https://gist.github.com/1237417
+# https://gist.github.com/1441139
