@@ -119,7 +119,7 @@ fi
 # Install plugins:
 PLUGINS=( "sstephenson:rbenv-vars"
           "sstephenson:ruby-build"
-          "fesplugas:rbenv-installer"
+          "hedgehog:rbenv-installer"
           "carsomyr:rbenv-bundler" )
 
 for plugin in ${PLUGINS[@]} ; do
