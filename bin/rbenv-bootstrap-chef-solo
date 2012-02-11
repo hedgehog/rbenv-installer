@@ -1,0 +1,74 @@
+#!/usr/bin/env bash 
+# 
+# Install rbenv locally to root, then install bundler and chef.
+# The minimal install to use sudo to install rbenv using chef cookbooks, e.g.
+# the system wide installation using the cookbooks fnichol/chef-rbenv and
+# fnichol/chef-ruby_build
+#
+set -x
+# Init
+FILE="/tmp/out.$$"
+GREP="/bin/grep"
+#....
+# Make sure only root can run our script
+if [[ $EUID -ne 0 ]]; then
+  echo "This script must be run as root" 1>&2
+  exit 1
+fi
+if [ $HOME != '/root' ]; then
+  echo "This script must be run as interactive: sudo -i" 1>&2
+  #exit 1
+fi
+sudo -i "
+echo \`pwd\`
+echo \$HOME
+apt-get -y install git-core curl
+#curl -L https://raw.github.com/fesplugas/rbenv-installer/master/bin/rbenv-installer | bash
+"
+cat <<'EOP' > /root/.profile
+if [ -d $HOME/.rbenv ]; then
+  export PATH="$HOME/.rbenv/bin:$PATH"
+  eval "$(rbenv init -)"
+fi
+if [ "$BASH" ]; then
+  if [ -f ~/.bashrc ]; then
+    . ~/.bashrc
+  fi
+fi
+EOP
+sudo -i "
+if [ ! -d '~/.bundle' ] ; then
+# Production installing gems skipping ri and rdoc
+cat << EOF > .gemrc
+---
+:sources:
+- http://gems.rubyforge.org
+- http://gems.github.com
+install: --no-rdoc --no-ri
+update: --no-ri --no-rdoc
+EOF
+
+# Best practice Bundler + rbenv configuration:
+# Among others see...
+# http://ryan.mcgeary.org/2011/02/09/vendor-everything-still-applies/
+mkdir -p ~/.bundle
+cat << EOF > ~/.bundle/config
+BUNDLE_BIN: bin
+BUNDLE_SHEBANG: ruby-local-exec
+BUNDLE_DISABLE_SHARED_GEMS: '1'
+BUNDLE_PATH: vendor
+EOF
+fi
+rbenv bootstrap-ubuntu-10-04
+rbenv install 1.9.2-p290
+rbenv rehash
+rbenv local 1.9.2-p290
+rbenv rehash
+gem update --system
+rbenv rehash
+gem install rbenv-rehash
+rbenv rehash
+gem install chef --version 0.10.8
+gem install bundler --version 1.1.rc.7
+"
+exit 0
