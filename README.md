@@ -32,7 +32,7 @@ To avoid hand-rolled ruby installations and packaged ruby installation, but rath
 manage rbenv user and system installs using Chef-Solo and fnichol's [ruby_build] and [rbenv]
 cookbooks, bootstrap an initial ruby (1.9.2-p290) + chef + bundler install:
 
-    sudo curl -L https://raw.github.com/fesplugas/rbenv-installer/master/bin/rbenv-bootstrap-chef-solo | bash
+    sudo curl -L https://raw.github.com/hedgehog/rbenv-installer/sysinstall/bin/rbenv-bootstrap-chef-solo | bash
 
 After this your production installations of ruby can be managed by chef.
 Example: install a different Ruby system-wide and then remove this bootstrapped version :)
